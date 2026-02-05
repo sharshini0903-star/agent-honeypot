@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
+from fastapi import Depends
+
 
 app = FastAPI()
 
@@ -33,34 +35,17 @@ def ai_agent_response(message: str) -> str:
 
 
 @app.post("/honeypot")
-async def honeypot(
-    event: ScamEvent,
-    request: Request,
-    authorization: str = Header(None)
-):
-    
-    if authorization != f"Bearer {API_KEY}":
+def honeypot(data: ScamRequest, x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    client_ip = request.client.host
-    user_agent = request.headers.get("user-agent")
+    message = data.message.lower()
 
-    scam_detected = detect_scam(event.message)
+    scam_keywords = ["otp", "bank", "blocked", "urgent", "lottery"]
 
-    response = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "source_ip": client_ip,
-        "user_agent": user_agent,
-        "message_received": event.message,
+    scam_detected = any(word in message for word in scam_keywords)
+
+    return {
         "scam_detected": scam_detected,
+        "handoff": "ai_agent" if scam_detected else "none"
     }
-
-   
-    if scam_detected:
-        response["handoff"] = "ai_agent"
-        response["agent_reply"] = ai_agent_response(event.message)
-    else:
-        response["handoff"] = "none"
-        response["agent_reply"] = None
-
-    return response
